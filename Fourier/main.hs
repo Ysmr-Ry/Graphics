@@ -7,13 +7,16 @@ import Haste.Events
 import Haste.Graphics.Canvas
 import Haste.Foreign (ffi)
 import Control.Applicative
+import Control.Arrow ((***))
 import Control.Monad
 import "mtl" Control.Monad.State
+import Data.Bits
 import Data.Complex
 import Data.IORef
+import Data.List
 import Lens.Micro
 import Lens.Micro.Mtl
-import Numeric.FFT
+--import Numeric.FFT
 import System.Random
 
 type LoopState = ((Double, Double), ([Complex Double], [Complex Double]), (Int, [Bool]), (IORef Bool, Bool))
@@ -34,6 +37,31 @@ fftSize = 256
 scaleR :: Double
 scaleR = 200
 
+brev :: Int -> Int -> Int
+brev n i = foldl (\acc m -> acc*2+m) 0 $ reverse $ pad n $ reverse $ unfoldr (\m -> if m == 0 then Nothing else Just (m.&.1, m`shift`(-1))) i where
+  pad m xs
+    | length xs < m = iterate (0:) xs !! (m-length xs)
+    | otherwise = xs
+
+brevSort :: Int -> [a] -> [a]
+brevSort n xs = map snd $ sortOn (brev (floor $ logBase 2 $ fi n) . fst) $ zip [0..] xs
+
+powerTwo :: Int -> Bool
+powerTwo n = n `elem` (takeWhile (<=n) $ iterate (*2) 1)
+
+fft :: [Complex Double] -> [Complex Double]
+fft xs = fft' (length xs) $ brevSort (length xs) xs
+
+fft' :: Int -> [Complex Double] -> [Complex Double]
+fft' n xs
+  | not (powerTwo n) = undefined
+  | n <= 1 = xs
+  | otherwise = flip map [0..n-1] $ \i -> xs1!!(i`mod`halfN)+xs2!!(i`mod`halfN)*cis (-2*pi*fi i/fi n)
+  where
+    half xs = splitAt (length xs`div`2) xs
+    halfN = n`div`2
+    (xs1, xs2) = ((fft' halfN)***(fft' halfN)) $ half xs
+    
 main :: IO ()
 main = do
   elemById "canvas" >>= \case
